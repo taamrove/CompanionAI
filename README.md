@@ -42,6 +42,15 @@ a CLI, a voice device) can talk to.
 
 ## Quick start
 
+**One-shot install** (installs Docker + Compose if missing, asks a couple of
+questions, builds and launches everything):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/taamrove/companionai/claude/local-openhuman-alternative-7r03zk/install.sh | bash
+```
+
+Re-run any time to update. Or do it by hand:
+
 ```bash
 cp .env.example .env
 # edit .env — at minimum set ANTHROPIC_API_KEY if you want cloud "heavy lifting"
