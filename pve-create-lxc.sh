@@ -18,6 +18,10 @@ CORES="${CORES:-4}"
 MEMORY="${MEMORY:-8192}"
 DISK="${DISK:-20}"            # GB
 BRIDGE="${BRIDGE:-vmbr0}"
+TAG="${TAG:-}"               # VLAN id, if your bridge is VLAN-aware (e.g. 20)
+IPCONF="${IPCONF:-dhcp}"     # "dhcp" or e.g. "10.10.20.109/24"
+GATEWAY="${GATEWAY:-}"       # required when IPCONF is a static address
+NAMESERVER="${NAMESERVER:-}" # e.g. 1.1.1.1 (recommended for static)
 
 say()  { printf '\n\033[1;36m▸ %s\033[0m\n' "$*"; }
 die()  { printf '\033[1;31m✗ %s\033[0m\n' "$*"; exit 1; }
@@ -42,12 +46,19 @@ STORAGE="${STORAGE:-$(pvesm status -content rootdir 2>/dev/null | awk 'NR>1{prin
 
 CTID="${CTID:-$(pvesh get /cluster/nextid)}"
 
+# Build the network config: bridge + optional VLAN tag + dhcp/static.
+NET="name=eth0,bridge=${BRIDGE},ip=${IPCONF}"
+[ -n "$TAG" ] && NET="${NET},tag=${TAG}"
+[ "$IPCONF" != "dhcp" ] && [ -n "$GATEWAY" ] && NET="${NET},gw=${GATEWAY}"
+
 say "Creating LXC $CTID  (host=$HOSTNAME, $CORES cores, ${MEMORY}MB RAM, ${DISK}G on $STORAGE)"
+[ -n "$TAG" ] && say "  VLAN tag: $TAG"
 pct create "$CTID" "${TSTORE}:vztmpl/${TEMPLATE}" \
   --hostname "$HOSTNAME" \
   --cores "$CORES" --memory "$MEMORY" --swap 2048 \
   --rootfs "${STORAGE}:${DISK}" \
-  --net0 "name=eth0,bridge=${BRIDGE},ip=dhcp" \
+  --net0 "$NET" \
+  ${NAMESERVER:+--nameserver "$NAMESERVER"} \
   --unprivileged 1 --features nesting=1 \
   --onboot 1 --start 1
 
