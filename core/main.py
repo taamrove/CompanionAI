@@ -52,7 +52,8 @@ async def _startup() -> None:
 
 # Protected API prefixes when API_TOKEN is set. The static UI shell stays open
 # so the page can load and supply the token via ?token=… (then localStorage).
-_PROTECTED = ("/chat", "/memory", "/voice", "/integrations", "/skills", "/selfimprove")
+_PROTECTED = ("/chat", "/memory", "/voice", "/integrations", "/skills",
+              "/selfimprove", "/modules")
 
 
 @app.middleware("http")

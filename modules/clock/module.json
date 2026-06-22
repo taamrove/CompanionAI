@@ -1,0 +1,8 @@
+{
+  "id": "clock",
+  "name": "Clock",
+  "version": "0.1.0",
+  "entrypoint": "module.py",
+  "permissions": ["tools:register", "log"],
+  "description": "Adds a get_time tool so the companion can tell the current UTC time."
+}

@@ -146,22 +146,35 @@ split plus an external watchdog.
 Run with supervision: set `SELFIMPROVE_ENABLED=true` and `SELF_CONFIRM_SECONDS=0`
 in `.env`, then `docker compose --profile watchdog up --build`.
 
+The trusted root (supervisor + security + module host) is encoded in
+[`core/trusted/manifest.py`](core/trusted/manifest.py) and enforced fail-closed.
+Full rationale and invariants: **[SAFETY.md](SAFETY.md)**.
+
+### Modules (plug-ins on top of the core)
+
+Like [Bitfocus Companion](https://bitfocus.io/companion), behaviour is extended
+with **modules** that run on top of the core through a permission-gated host API
+— they never touch the DB, secrets, or auth. See [`modules/README.md`](modules/README.md);
+the bundled `clock` module adds a `get_time` tool as a template.
+
 ## Repository layout
 
 ```
-core/                  the KERNEL — immutable to the AI
-  main.py              FastAPI app, boot sequence, auth
-  config.py            env-driven settings
-  llm/                 hybrid LLM routing (cloud Claude + local Ollama)
-  memory/              SQLite store + Markdown vault
-  rag/                 embeddings + retrieval
+core/                  the KERNEL
+  trusted/             TRUSTED ROOT — immutable to the AI (partition + module host)
+    manifest.py        the trust partition (TRUSTED / MUTABLE) + guard
+    modules/           module host: loader · sandbox · permission-gated API
   selfimprove/         skill registry · versioning · health · rollback · audit
-  voice/               STT / TTS endpoints (pluggable backends)
-  integrations/        connector framework + Gmail stub
-  api/                 HTTP route handlers
+  memory/              SQLite store + Markdown vault (integrity = trusted)
+  config.py            env-driven settings (secrets/auth = trusted)
+  main.py              FastAPI app, boot sequence, auth
+  llm/                 hybrid LLM routing (mutable)
+  rag/                 embeddings + retrieval (mutable)
+  service.py           orchestration (mutable)
+  voice/ integrations/ api/   endpoints / connectors
 skills/                USERLAND — versioned behaviour the AI may revise
-  persona/             the system prompt / character
-  routing/             local-vs-cloud heuristic
+  persona/  routing/   system prompt + local-vs-cloud heuristic
+modules/               USERLAND plug-ins on top of the core (e.g. clock/)
 watchdog/              external supervisor container
 web/                   3D "Archive" UI (+ classic.html fallback)
 data/                  SQLite db, vault, skill versions, audit (gitignored)

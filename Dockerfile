@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY core ./core
 COPY skills ./skills
+COPY modules ./modules
 COPY web ./web
 
 # Vault + SQLite live here; mount a volume to persist across restarts.

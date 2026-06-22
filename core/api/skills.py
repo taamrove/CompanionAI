@@ -44,6 +44,12 @@ async def confirm(request: Request) -> dict:
     return {"ok": True, "skills": reg.list_skills()}
 
 
+@router.get("/modules")
+async def modules(request: Request) -> dict:
+    host = request.app.state.companion.host
+    return {"modules": host.list_modules()}
+
+
 @router.get("/skills/{name}/history")
 async def history(name: str, request: Request) -> dict:
     reg = request.app.state.companion.registry

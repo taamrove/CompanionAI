@@ -18,6 +18,7 @@ from core.config import Settings
 from core.selfimprove.audit import AuditLog
 from core.selfimprove.health import run_check
 from core.selfimprove.versioning import VersionStore
+from core.trusted import is_mutable
 
 # Ultimate, baked-in fallbacks — used only if every on-disk source is gone.
 _BAKED_DEFAULTS = {
@@ -100,6 +101,11 @@ class SkillRegistry:
         if not self.enabled:
             self.audit.record("rejected", name, author=author, why="self-improve disabled")
             return {"staged": False, "reason": "self-improvement is disabled"}
+
+        # Enforce the trust partition: the target must be in the mutable layer.
+        if not is_mutable(f"skills/{name}"):
+            self.audit.record("rejected", name, author=author, why="target in trusted root")
+            return {"staged": False, "reason": "target is in the trusted root (human-only)"}
 
         ok, msg = run_check(name, content)
         vid = self._store(name).add_version(content, author, reason)

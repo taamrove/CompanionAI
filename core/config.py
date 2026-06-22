@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     selfimprove_mode: str = "auto"
     # Path to the shipped skill baselines (defaults to ./skills).
     skills_dir: str = ""
+    # Path to plug-in modules (defaults to ./modules).
+    modules_dir: str = ""
     # Seconds of crash-free uptime before the brain self-confirms a freshly
     # applied skill version as last-known-good. Set to 0 to hand confirm/rollback
     # authority entirely to the external watchdog (recommended when one runs).
@@ -72,6 +74,12 @@ class Settings(BaseSettings):
             return Path(self.skills_dir)
         # repo_root/skills (config.py lives in core/)
         return Path(__file__).resolve().parent.parent / "skills"
+
+    @property
+    def modules_path(self) -> Path:
+        if self.modules_dir:
+            return Path(self.modules_dir)
+        return Path(__file__).resolve().parent.parent / "modules"
 
     @property
     def cloud_available(self) -> bool:

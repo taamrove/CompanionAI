@@ -17,6 +17,7 @@ from core.llm.router import LLMRouter
 from core.memory.store import MemoryStore
 from core.rag.retriever import Retriever
 from core.selfimprove import SkillRegistry
+from core.trusted.modules import ModuleHost
 
 # The persona (system prompt) is now a *userland skill* loaded from the registry,
 # so the companion can revise its own character under the self-improvement
@@ -90,10 +91,25 @@ class Companion:
         self.registry = SkillRegistry(settings)
         self.router = LLMRouter(settings, self.registry)
         self.retriever = Retriever(self.store, self.router)
+        # Plug-in modules run on top of the core through a permission-gated host.
+        self.host = ModuleHost(
+            settings.modules_path,
+            remember=self._module_remember,
+            search=self._module_search,
+            audit=self.registry.audit,
+        )
+        self.host.discover_and_load()
 
     async def _remember(self, session_id: str, text: str, kind: str = "fact") -> None:
         embedding = await self.router.embed(text)
         self.store.add_memory(session_id, text, kind=kind, embedding=embedding)
+
+    # Capabilities handed to modules (gated by the host's permission checks).
+    async def _module_remember(self, text: str, kind: str = "fact") -> None:
+        await self._remember("modules", text, kind)
+
+    async def _module_search(self, query: str, top_k: int = 5) -> list[dict]:
+        return await self.retriever.search(query, session_id=None, top_k=top_k)
 
     def _build_system(self, recalled: list[dict]) -> str:
         persona = self.registry.load("persona")  # mutable skill, self-healing
@@ -178,8 +194,9 @@ class Companion:
             {"role": h["role"], "content": h["content"]} for h in history
         ]
 
-        # Self-improvement is only offered when the human master switch is on.
-        tools = [SAVE_MEMORY_TOOL]
+        # Tools = built-ins + anything contributed by plug-in modules. Self-
+        # improvement is only offered when the human master switch is on.
+        tools = [SAVE_MEMORY_TOOL, *self.host.tools()]
         if self.registry.enabled:
             tools.append(REVISE_SKILL_TOOL)
 
@@ -221,6 +238,9 @@ class Companion:
                 reason=block.input.get("reason", ""),
             )
             return json.dumps(result)
+        if self.host.has_tool(block.name):
+            result = await self.host.dispatch(block.name, block.input)
+            return result if isinstance(result, str) else json.dumps(result)
         return f"Unknown tool: {block.name}"
 
     async def _chat_local(
