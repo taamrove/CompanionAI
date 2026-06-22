@@ -61,6 +61,8 @@ done
 [ -n "$IP" ] || say "Network still pending — install will continue and DHCP should settle."
 
 say "Installing CompanionAI inside container $CTID (no Docker)…"
+# The minimal Debian template has no curl — install it before bootstrapping.
+pct exec "$CTID" -- bash -lc "apt-get update -qq && apt-get install -y -qq curl ca-certificates"
 pct exec "$CTID" -- bash -lc \
   "ANTHROPIC_API_KEY='${ANTHROPIC_API_KEY:-}' bash <(curl -fsSL ${RAW}/install-native.sh)"
 
