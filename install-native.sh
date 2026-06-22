@@ -27,7 +27,7 @@ ask() {  # ask "Prompt" "default"
 say "Installing system packages…"
 export DEBIAN_FRONTEND=noninteractive
 $SUDO apt-get update -qq
-$SUDO apt-get install -y -qq python3 python3-venv python3-pip git curl openssl ca-certificates
+$SUDO apt-get install -y -qq python3 python3-venv python3-pip git curl openssl ca-certificates zstd
 
 # ── 2. Ollama (native systemd service) ──────────────────────────────
 if ! command -v ollama >/dev/null 2>&1; then
