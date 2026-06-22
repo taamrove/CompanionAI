@@ -75,6 +75,28 @@ Key knobs:
 - `LOCAL_MODEL` — Ollama model for light dialogue (default `llama3.2`)
 - `OLLAMA_BASE_URL`, `ANTHROPIC_API_KEY`
 
+## iPhone
+
+The brain is a plain HTTP API, so the phone is just another client. Three tiers,
+cheapest first:
+
+1. **Install the Archive as an app (PWA) — works today.** Open the server URL in
+   Safari → Share → *Add to Home Screen*. The bundled `manifest.webmanifest` +
+   service worker make it launch full-screen with its own icon. The 3D Archive
+   runs on iOS WebGL.
+2. **Siri Shortcuts / Action Button — voice, hands-free.** A "Get Contents of
+   URL" shortcut that POSTs to `/chat` lets you say *"Hey Siri, ask Companion…"*,
+   speak your message, and have iOS read the reply aloud — no App Store needed.
+3. **Native SwiftUI app — the ceiling.** Native Speech + AVSpeech voice, push
+   notifications for a *proactive* companion, Home-Screen widgets / Live
+   Activities, and the Archive rendered in SceneKit/RealityKit. Talks to the
+   same API.
+
+**Reaching your server safely:** put the brain and your phone on a private
+[Tailscale](https://tailscale.com) network (recommended — no public exposure),
+or expose it behind a reverse proxy and set `API_TOKEN`. Clients then send
+`Authorization: Bearer <token>`; the web UI picks it up from `?token=…` once.
+
 ## Repository layout
 
 ```

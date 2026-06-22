@@ -4,6 +4,13 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>CompanionAI · The Archive</title>
+<meta name="theme-color" content="#04060d" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Companion" />
+<link rel="manifest" href="/static/manifest.webmanifest" />
+<link rel="apple-touch-icon" href="/static/icon.svg" />
+<link rel="icon" href="/static/icon.svg" />
 <style>
   :root { --accent: #5fd0ff; --warm: #ffcf6b; }
   * { box-sizing: border-box; }
@@ -93,6 +100,20 @@ const KIND_COLORS = {
 };
 const sessionId = localStorage.companionSession ||
   (localStorage.companionSession = 'arc-' + Math.random().toString(36).slice(2, 8));
+
+// Optional API token (for reaching the brain over the network). Set once via
+// ?token=… then it's remembered; attached as a Bearer header to every call.
+const _qToken = new URLSearchParams(location.search).get('token');
+if (_qToken) localStorage.companionToken = _qToken;
+function authHeaders(extra = {}) {
+  const t = localStorage.companionToken;
+  return t ? { ...extra, Authorization: 'Bearer ' + t } : extra;
+}
+
+// Register the service worker so the Archive installs as a home-screen app.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/static/sw.js').catch(() => {});
+}
 
 // ── scene ──────────────────────────────────────────────────────────
 const canvas = document.getElementById('scene');
@@ -194,7 +215,7 @@ function addShard(note, i, n) {
 
 async function loadArchive() {
   try {
-    const r = await fetch('/memory/list?limit=300');
+    const r = await fetch('/memory/list?limit=300', { headers: authHeaders() });
     const { notes } = await r.json();
     notes.forEach((nt, i) => addShard(nt, i, notes.length));
     document.getElementById('count').textContent = byPath.size;
@@ -278,7 +299,7 @@ form.addEventListener('submit', async (e) => {
 
   try {
     const resp = await fetch('/chat/stream', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+      method: 'POST', headers: authHeaders({ 'content-type': 'application/json' }),
       body: JSON.stringify({ session_id: sessionId, message: text }),
     });
     const reader = resp.body.getReader();

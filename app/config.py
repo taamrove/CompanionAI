@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
 
+    # Optional shared secret. If set, API calls must send
+    # `Authorization: Bearer <api_token>`. Leave empty for open local access
+    # (e.g. when the brain is only reachable over a private Tailscale network).
+    api_token: str = ""
+
     @property
     def data_path(self) -> Path:
         p = Path(self.data_dir)

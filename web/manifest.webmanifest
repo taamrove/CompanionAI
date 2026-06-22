@@ -1,0 +1,14 @@
+{
+  "name": "CompanionAI · The Archive",
+  "short_name": "Companion",
+  "description": "Your local-first AI companion and memory archive.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#04060d",
+  "theme_color": "#04060d",
+  "icons": [
+    { "src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
