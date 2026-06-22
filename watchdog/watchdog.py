@@ -19,6 +19,7 @@ supervisor outside it does.
 from __future__ import annotations
 
 import os
+import subprocess
 import time
 
 import httpx
@@ -27,6 +28,10 @@ BRAIN_URL = os.environ.get("BRAIN_URL", "http://brain:8080").rstrip("/")
 TARGET = os.environ.get("TARGET_CONTAINER", "companionai-brain")
 API_TOKEN = os.environ.get("API_TOKEN", "")
 DOCKER_SOCK = os.environ.get("DOCKER_SOCK", "/var/run/docker.sock")
+# Restart mechanism. If RESTART_CMD is set (e.g. "systemctl restart companionai")
+# the watchdog runs it directly — for native/systemd installs with no Docker.
+# Otherwise it restarts the brain container via the Docker socket.
+RESTART_CMD = os.environ.get("RESTART_CMD", "")
 
 INTERVAL = int(os.environ.get("INTERVAL", "10"))          # seconds between polls
 FAIL_THRESHOLD = int(os.environ.get("FAIL_THRESHOLD", "3"))  # down polls → restart
@@ -34,7 +39,17 @@ PROBATION = int(os.environ.get("PROBATION", "45"))        # healthy window to co
 AUTO_APPLY = os.environ.get("AUTO_APPLY", "true").lower() == "true"
 
 _auth = {"Authorization": f"Bearer {API_TOKEN}"} if API_TOKEN else {}
-_docker = httpx.Client(transport=httpx.HTTPTransport(uds=DOCKER_SOCK), base_url="http://docker", timeout=30)
+_docker = None
+
+
+def _docker_client() -> httpx.Client:
+    global _docker
+    if _docker is None:
+        _docker = httpx.Client(
+            transport=httpx.HTTPTransport(uds=DOCKER_SOCK),
+            base_url="http://docker", timeout=30,
+        )
+    return _docker
 
 
 def log(msg: str) -> None:
@@ -67,7 +82,10 @@ def confirm() -> None:
 def restart(reason: str) -> None:
     log(f"restarting brain ({reason})")
     try:
-        _docker.post(f"/containers/{TARGET}/restart")
+        if RESTART_CMD:
+            subprocess.run(RESTART_CMD, shell=True, check=False)
+        else:
+            _docker_client().post(f"/containers/{TARGET}/restart")
     except Exception as exc:
         log(f"restart failed: {exc}")
 
