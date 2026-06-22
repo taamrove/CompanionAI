@@ -3,6 +3,9 @@ services:
     build: .
     container_name: companionai-brain
     env_file: .env
+    environment:
+      # 0 hands skill confirm/rollback authority to the watchdog; >0 self-confirms.
+      - SELF_CONFIRM_SECONDS=${SELF_CONFIRM_SECONDS:-20}
     ports:
       - "8080:8080"
     volumes:
@@ -27,6 +30,27 @@ services:
     #         - driver: nvidia
     #           count: all
     #           capabilities: [gpu]
+
+  # External supervisor. Opt-in: `docker compose --profile watchdog up`.
+  # Set SELF_CONFIRM_SECONDS=0 in .env so the watchdog owns confirm/rollback.
+  watchdog:
+    build: ./watchdog
+    container_name: companionai-watchdog
+    profiles: ["watchdog"]
+    environment:
+      - BRAIN_URL=http://brain:8080
+      - TARGET_CONTAINER=companionai-brain
+      - API_TOKEN=${API_TOKEN:-}
+      - INTERVAL=10
+      - FAIL_THRESHOLD=3
+      - PROBATION=45
+      - AUTO_APPLY=true
+    volumes:
+      # Read-only access to the Docker socket so it can restart the brain.
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - brain
+    restart: unless-stopped
 
 volumes:
   ollama:

@@ -4,18 +4,23 @@ Policy (mode = ``hybrid``):
   * Light, conversational turns  → local Ollama  (fast, free, offline)
   * Heavy lifting                → cloud Claude  (deep reasoning, tools)
 
-"Heavy" is decided by a cheap heuristic (length + intent keywords). It is
-deliberately simple and easy to tune; swap in a classifier later if you want.
+"Heavy" is decided by a cheap heuristic (length + intent keywords) loaded from
+the *routing* skill — so the companion can tune its own routing under the
+self-improvement guardrails. Falls back to safe defaults if the skill is bad.
 """
 
 from __future__ import annotations
 
-from app.config import Settings
-from app.llm.cloud import CloudClient
-from app.llm.local import OllamaClient
+import json
 
-# Words that signal the user wants real reasoning / tools, not chit-chat.
-_HEAVY_HINTS = (
+from core.config import Settings
+from core.llm.cloud import CloudClient
+from core.llm.local import OllamaClient
+from core.selfimprove import SkillRegistry
+
+# Safe defaults used if the routing skill is missing or malformed.
+_DEFAULT_THRESHOLD = 280
+_DEFAULT_HINTS = (
     "analyze", "analyse", "research", "plan", "code", "debug", "write",
     "summarize", "summarise", "compare", "explain", "design", "draft",
     "calculate", "review", "translate", "step by step", "why", "how do",
@@ -23,8 +28,9 @@ _HEAVY_HINTS = (
 
 
 class LLMRouter:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, registry: SkillRegistry) -> None:
         self.settings = settings
+        self.registry = registry
         self.local = OllamaClient(
             settings.ollama_base_url, settings.local_model, settings.embed_model
         )
@@ -33,6 +39,17 @@ class LLMRouter:
             if settings.cloud_available
             else None
         )
+
+    def _routing_config(self) -> tuple[int, tuple[str, ...]]:
+        """Load the routing heuristic from the (mutable) routing skill, with a
+        hard fallback so a broken skill can never break routing."""
+        try:
+            data = json.loads(self.registry.load("routing"))
+            threshold = int(data["length_threshold"])
+            hints = tuple(str(h).lower() for h in data["heavy_hints"])
+            return threshold, hints
+        except Exception:
+            return _DEFAULT_THRESHOLD, _DEFAULT_HINTS
 
     def use_cloud(self, message: str) -> bool:
         """Decide whether this turn should go to the cloud brain."""
@@ -44,10 +61,11 @@ class LLMRouter:
         # hybrid
         if self.cloud is None:
             return False
+        threshold, hints = self._routing_config()
         lowered = message.lower()
-        if len(message) > 280:
+        if len(message) > threshold:
             return True
-        return any(hint in lowered for hint in _HEAVY_HINTS)
+        return any(hint in lowered for hint in hints)
 
     async def embed(self, text: str) -> list[float] | None:
         """Embeddings always come from the local model (keeps vectors local

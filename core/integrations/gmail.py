@@ -13,8 +13,8 @@ To finish:
 
 from __future__ import annotations
 
-from app.config import get_settings
-from app.integrations.base import Connector
+from core.config import get_settings
+from core.integrations.base import Connector
 
 
 class GmailConnector(Connector):

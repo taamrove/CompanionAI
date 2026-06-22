@@ -8,7 +8,8 @@ WORKDIR /srv
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app ./app
+COPY core ./core
+COPY skills ./skills
 COPY web ./web
 
 # Vault + SQLite live here; mount a volume to persist across restarts.
@@ -17,4 +18,4 @@ VOLUME ["/data"]
 
 EXPOSE 8080
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "core.main:app", "--host", "0.0.0.0", "--port", "8080"]

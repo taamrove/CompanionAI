@@ -7,7 +7,7 @@ this is the same idea, kept minimal and self-hostable.
 
 from __future__ import annotations
 
-from app.memory.store import MemoryStore
+from core.memory.store import MemoryStore
 
 
 class Connector:

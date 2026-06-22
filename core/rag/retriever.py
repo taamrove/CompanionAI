@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import math
 
-from app.llm.router import LLMRouter
-from app.memory.store import MemoryStore
+from core.llm.router import LLMRouter
+from core.memory.store import MemoryStore
 
 
 def _cosine(a: list[float], b: list[float]) -> float:

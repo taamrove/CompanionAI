@@ -6,7 +6,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from app.voice.backends import get_stt, get_tts
+from core.voice.backends import get_stt, get_tts
 
 router = APIRouter(prefix="/voice", tags=["voice"])
 

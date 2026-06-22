@@ -1,0 +1,8 @@
+{
+  "length_threshold": 280,
+  "heavy_hints": [
+    "analyze", "analyse", "research", "plan", "code", "debug", "write",
+    "summarize", "summarise", "compare", "explain", "design", "draft",
+    "calculate", "review", "translate", "step by step", "why", "how do"
+  ]
+}

@@ -10,21 +10,17 @@ This is the single entry point the API calls for a chat turn. It:
 
 from __future__ import annotations
 
-from app.config import Settings
-from app.llm.router import LLMRouter
-from app.memory.store import MemoryStore
-from app.rag.retriever import Retriever
+import json
 
-SYSTEM_PROMPT = """You are CompanionAI, a warm, attentive personal companion that \
-runs entirely on the user's own server. You remember things about the user across \
-conversations and bring them up naturally when relevant.
+from core.config import Settings
+from core.llm.router import LLMRouter
+from core.memory.store import MemoryStore
+from core.rag.retriever import Retriever
+from core.selfimprove import SkillRegistry
 
-You have a long-term memory. Relevant memories are provided to you under \
-"Recalled memories". When the user shares something durable about themselves — \
-preferences, facts, people, ongoing projects, goals — use the save_memory tool so \
-you remember it next time. Don't save trivia or one-off chit-chat.
-
-Be concise and personable. Lead with the answer."""
+# The persona (system prompt) is now a *userland skill* loaded from the registry,
+# so the companion can revise its own character under the self-improvement
+# guardrails. See skills/persona/active.md.
 
 # Used for the instant "warm" reply from the local model while the cloud brain
 # works on the considered answer. Keep it short and human — it's a holding turn.
@@ -60,12 +56,39 @@ SAVE_MEMORY_TOOL = {
     },
 }
 
+# Tool the cloud brain can call to revise one of its own userland skills. Only
+# offered when the master self-improvement switch is on; every call still goes
+# through the kernel's health gate + auto-rollback (see core/selfimprove/).
+REVISE_SKILL_TOOL = {
+    "name": "revise_skill",
+    "description": (
+        "Improve one of your own behaviours by submitting a new version of a "
+        "skill. Changes are health-checked and automatically rolled back if they "
+        "break anything. Use sparingly, only when you can clearly state why the "
+        "revision is better."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "skill": {"type": "string", "enum": ["persona", "routing"]},
+            "content": {
+                "type": "string",
+                "description": "The complete new content for the skill (full "
+                "replacement, not a diff).",
+            },
+            "reason": {"type": "string", "description": "Why this is an improvement."},
+        },
+        "required": ["skill", "content", "reason"],
+    },
+}
+
 
 class Companion:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.store = MemoryStore(settings.db_path, settings.vault_path)
-        self.router = LLMRouter(settings)
+        self.registry = SkillRegistry(settings)
+        self.router = LLMRouter(settings, self.registry)
         self.retriever = Retriever(self.store, self.router)
 
     async def _remember(self, session_id: str, text: str, kind: str = "fact") -> None:
@@ -73,10 +96,11 @@ class Companion:
         self.store.add_memory(session_id, text, kind=kind, embedding=embedding)
 
     def _build_system(self, recalled: list[dict]) -> str:
+        persona = self.registry.load("persona")  # mutable skill, self-healing
         if not recalled:
-            return SYSTEM_PROMPT
+            return persona
         lines = "\n".join(f"- ({m['kind']}) {m['text']}" for m in recalled)
-        return f"{SYSTEM_PROMPT}\n\nRecalled memories:\n{lines}"
+        return f"{persona}\n\nRecalled memories:\n{lines}"
 
     async def chat(self, session_id: str, message: str) -> dict:
         self.store.add_turn(session_id, "user", message)
@@ -154,31 +178,50 @@ class Companion:
             {"role": h["role"], "content": h["content"]} for h in history
         ]
 
+        # Self-improvement is only offered when the human master switch is on.
+        tools = [SAVE_MEMORY_TOOL]
+        if self.registry.enabled:
+            tools.append(REVISE_SKILL_TOOL)
+
         # Tool-use loop: keep going until Claude stops calling tools.
         for _ in range(5):
-            resp = await cloud.create(system, messages, tools=[SAVE_MEMORY_TOOL])
+            resp = await cloud.create(system, messages, tools=tools)
             if resp.stop_reason != "tool_use":
                 break
             messages.append({"role": "assistant", "content": resp.content})
             tool_results = []
             for block in resp.content:
-                if block.type == "tool_use" and block.name == "save_memory":
-                    await self._remember(
-                        session_id,
-                        block.input["text"],
-                        block.input.get("kind", "fact"),
-                    )
-                    tool_results.append(
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": "Saved.",
-                        }
-                    )
+                if block.type != "tool_use":
+                    continue
+                tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": await self._run_tool(session_id, block),
+                    }
+                )
             messages.append({"role": "user", "content": tool_results})
 
         text = "".join(b.text for b in resp.content if b.type == "text").strip()
         return text or "…", "cloud"
+
+    async def _run_tool(self, session_id: str, block) -> str:
+        """Dispatch a single tool call from the cloud brain."""
+        if block.name == "save_memory":
+            await self._remember(
+                session_id, block.input["text"], block.input.get("kind", "fact")
+            )
+            return "Saved."
+        if block.name == "revise_skill":
+            # Goes through the kernel's guarded path: health gate + auto-rollback.
+            result = self.registry.apply(
+                block.input["skill"],
+                block.input["content"],
+                author="companion",
+                reason=block.input.get("reason", ""),
+            )
+            return json.dumps(result)
+        return f"Unknown tool: {block.name}"
 
     async def _chat_local(
         self, session_id: str, system: str, history: list[dict], message: str

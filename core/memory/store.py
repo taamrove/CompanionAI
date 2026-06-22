@@ -18,7 +18,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from app.memory.vault import Vault
+from core.memory.vault import Vault
 
 
 def _now() -> str:

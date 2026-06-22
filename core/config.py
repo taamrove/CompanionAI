@@ -28,6 +28,19 @@ class Settings(BaseSettings):
     data_dir: str = "/data"
     rag_top_k: int = 5
 
+    # Self-improvement (userland skills)
+    # Master kill switch — when False, the AI cannot change any skill at all.
+    selfimprove_enabled: bool = False
+    # When enabled: "auto" applies (health-gated, auto-rollback) | "propose"
+    # only queues changes for human approval.
+    selfimprove_mode: str = "auto"
+    # Path to the shipped skill baselines (defaults to ./skills).
+    skills_dir: str = ""
+    # Seconds of crash-free uptime before the brain self-confirms a freshly
+    # applied skill version as last-known-good. Set to 0 to hand confirm/rollback
+    # authority entirely to the external watchdog (recommended when one runs).
+    self_confirm_seconds: int = 20
+
     # Server
     host: str = "0.0.0.0"
     port: int = 8080
@@ -52,6 +65,13 @@ class Settings(BaseSettings):
     @property
     def db_path(self) -> Path:
         return self.data_path / "companion.db"
+
+    @property
+    def skills_path(self) -> Path:
+        if self.skills_dir:
+            return Path(self.skills_dir)
+        # repo_root/skills (config.py lives in core/)
+        return Path(__file__).resolve().parent.parent / "skills"
 
     @property
     def cloud_available(self) -> bool:
