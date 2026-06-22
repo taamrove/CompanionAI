@@ -3,17 +3,20 @@
 # CompanionAI one-shot installer.
 #   curl -fsSL <raw-url>/install.sh | bash
 #
-# Installs Docker + the Compose plugin if missing, fetches the code, asks you a
-# couple of questions (press Enter for defaults), then builds and launches
-# everything — including the watchdog and the local models.
+# Installs Docker + Compose if missing (robust on Unraid), fetches the code,
+# asks you a couple of questions (press Enter for defaults), then builds and
+# launches everything — including the watchdog and the local models.
 #
 set -euo pipefail
 
 REPO="${COMPANION_REPO:-https://github.com/taamrove/companionai.git}"
 BRANCH="${COMPANION_BRANCH:-claude/local-openhuman-alternative-7r03zk}"
 DIR="${COMPANION_DIR:-$HOME/companionai}"
+ARCH="$(uname -m)"
+COMPOSE_URL="https://github.com/docker/compose/releases/latest/download/docker-compose-linux-${ARCH}"
 
 SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo"
+DC=""  # the working compose command, detected below
 
 say()  { printf '\n\033[1;36m▸ %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m! %s\033[0m\n' "$*"; }
@@ -34,15 +37,38 @@ if ! command -v docker >/dev/null 2>&1; then
   curl -fsSL https://get.docker.com | $SUDO sh
 fi
 
-# ── 2. Docker Compose v2 plugin (Unraid & some distros lack it) ─────
-if ! docker compose version >/dev/null 2>&1; then
-  say "Installing the Docker Compose plugin…"
+# ── 2. Docker Compose (try several install paths, then verify) ──────
+ensure_compose() {
+  if docker compose version >/dev/null 2>&1; then DC="docker compose"; return; fi
+
+  say "Installing Docker Compose…"
+  # (a) system-wide CLI plugin — the path Unraid actually scans
+  $SUDO mkdir -p /usr/local/lib/docker/cli-plugins
+  $SUDO curl -fSL "$COMPOSE_URL" -o /usr/local/lib/docker/cli-plugins/docker-compose
+  $SUDO chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+  if docker compose version >/dev/null 2>&1; then DC="docker compose"; return; fi
+
+  # (b) user CLI plugin
   mkdir -p "$HOME/.docker/cli-plugins"
-  curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m)" \
-    -o "$HOME/.docker/cli-plugins/docker-compose"
+  cp /usr/local/lib/docker/cli-plugins/docker-compose "$HOME/.docker/cli-plugins/docker-compose" 2>/dev/null || \
+    $SUDO curl -fSL "$COMPOSE_URL" -o "$HOME/.docker/cli-plugins/docker-compose"
   chmod +x "$HOME/.docker/cli-plugins/docker-compose"
-fi
-docker compose version >/dev/null
+  if docker compose version >/dev/null 2>&1; then DC="docker compose"; return; fi
+
+  # (c) fall back to the standalone `docker-compose` binary
+  $SUDO curl -fSL "$COMPOSE_URL" -o /usr/local/bin/docker-compose
+  $SUDO chmod +x /usr/local/bin/docker-compose
+  if docker-compose version >/dev/null 2>&1; then
+    DC="docker-compose"
+    warn "Using standalone 'docker-compose' (the plugin path isn't scanned here)."
+    return
+  fi
+
+  echo "ERROR: could not get Docker Compose working." >&2
+  exit 1
+}
+ensure_compose
+say "Using compose command: $DC"
 
 # ── 3. Code ─────────────────────────────────────────────────────────
 if [ -d "$DIR/.git" ]; then
@@ -88,20 +114,20 @@ grep -q '^SELFIMPROVE_ENABLED=true' .env && PROFILE="--profile watchdog"
 
 # ── 5. Launch ───────────────────────────────────────────────────────
 say "Building and starting (first run downloads images — give it a minute)…"
-docker compose $PROFILE up -d --build
+$DC $PROFILE up -d --build
 
 # ── 6. Local models ─────────────────────────────────────────────────
 PULL="$(ask 'Download local model llama3.2 + embeddings now (~2 GB)? [Y/n]:' 'Y')"
 case "$PULL" in
-  [Nn]*) warn "Skipped. Pull later with: docker compose exec ollama ollama pull llama3.2" ;;
+  [Nn]*) warn "Skipped. Pull later with: $DC exec ollama ollama pull llama3.2" ;;
   *) say "Waiting for Ollama to come up…"
      tries=0
-     until docker compose exec -T ollama ollama list >/dev/null 2>&1 || [ "$tries" -ge 30 ]; do
+     until $DC exec -T ollama ollama list >/dev/null 2>&1 || [ "$tries" -ge 30 ]; do
        sleep 2; tries=$((tries + 1))
      done
      say "Pulling models (this can take a few minutes)…"
-     docker compose exec -T ollama ollama pull llama3.2 || true
-     docker compose exec -T ollama ollama pull nomic-embed-text || true ;;
+     $DC exec -T ollama ollama pull llama3.2 || true
+     $DC exec -T ollama ollama pull nomic-embed-text || true ;;
 esac
 
 # ── 7. Status ───────────────────────────────────────────────────────
@@ -113,7 +139,7 @@ curl -s localhost:8080/health || warn "Health check didn't respond yet — try i
 echo
 echo "  Open:  http://${IP}:8080/?token=${TOKEN}"
 echo "  API token: ${TOKEN}"
-echo "  Logs:  cd ${DIR} && docker compose logs -f brain"
+echo "  Logs:  cd ${DIR} && ${DC} logs -f brain"
 echo
 echo "  Tip: to reach it from your phone without opening ports, run on this box:"
 echo "       curl -fsSL https://tailscale.com/install.sh | sh && ${SUDO} tailscale up"
