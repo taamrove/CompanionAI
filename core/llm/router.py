@@ -14,7 +14,8 @@ from __future__ import annotations
 import json
 
 from core.config import Settings
-from core.llm.cloud import CloudClient
+from core.llm import cloudconfig
+from core.llm.cloud import build_cloud
 from core.llm.local import OllamaClient
 from core.selfimprove import SkillRegistry
 
@@ -34,11 +35,30 @@ class LLMRouter:
         self.local = OllamaClient(
             settings.ollama_base_url, settings.local_model, settings.embed_model
         )
-        self.cloud: CloudClient | None = (
-            CloudClient(settings.anthropic_api_key, settings.cloud_model, settings.cloud_effort)
-            if settings.cloud_available
-            else None
-        )
+        # The cloud backend is provider-configurable at runtime (see UI/settings).
+        self._cloud_cfg = cloudconfig.load(settings)
+        self.cloud = build_cloud(self._cloud_cfg)
+
+    def reload_cloud(self) -> dict:
+        """Rebuild the cloud client from the persisted config (after a UI change)."""
+        self._cloud_cfg = cloudconfig.load(self.settings)
+        self.cloud = build_cloud(self._cloud_cfg)
+        return cloudconfig.public(self._cloud_cfg)
+
+    def cloud_config_public(self) -> dict:
+        return cloudconfig.public(self._cloud_cfg)
+
+    def update_cloud(self, patch: dict) -> dict:
+        """Merge a patch into the cloud config, persist, and reload live. An
+        empty/missing api_key keeps the existing one."""
+        cfg = cloudconfig.load(self.settings)
+        for key in ("provider", "model", "base_url", "effort"):
+            if patch.get(key) is not None:
+                cfg[key] = patch[key]
+        if patch.get("api_key"):  # only overwrite when a new key is supplied
+            cfg["api_key"] = patch["api_key"]
+        cloudconfig.save(self.settings, cfg)
+        return self.reload_cloud()
 
     def _routing_config(self) -> tuple[int, tuple[str, ...]]:
         """Load the routing heuristic from the (mutable) routing skill, with a
@@ -83,7 +103,8 @@ class LLMRouter:
                 "reachable": await self.local.healthy(),
             },
             "cloud": {
-                "model": self.settings.cloud_model if self.cloud else None,
+                "provider": self._cloud_cfg.get("provider") if self.cloud else None,
+                "model": self._cloud_cfg.get("model") if self.cloud else None,
                 "configured": self.cloud is not None,
             },
         }

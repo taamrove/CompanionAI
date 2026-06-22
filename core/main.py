@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from core.api import chat as chat_routes
 from core.api import integrations as integration_routes
+from core.api import settings as settings_routes
 from core.api import skills as skill_routes
 from core.config import get_settings
 from core.integrations.gmail import GmailConnector
@@ -31,6 +32,7 @@ app.include_router(chat_routes.router)
 app.include_router(voice_router)
 app.include_router(integration_routes.router)
 app.include_router(skill_routes.router)
+app.include_router(settings_routes.router)
 
 
 @app.on_event("startup")
@@ -53,7 +55,7 @@ async def _startup() -> None:
 # Protected API prefixes when API_TOKEN is set. The static UI shell stays open
 # so the page can load and supply the token via ?token=… (then localStorage).
 _PROTECTED = ("/chat", "/memory", "/voice", "/integrations", "/skills",
-              "/selfimprove", "/modules")
+              "/selfimprove", "/modules", "/settings")
 
 
 @app.middleware("http")

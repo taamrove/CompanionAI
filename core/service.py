@@ -189,10 +189,17 @@ class Companion:
     ) -> tuple[str, str]:
         assert self.router.cloud is not None
         cloud = self.router.cloud
-        # Claude needs structured content; history is plain strings.
         messages: list[dict] = [
             {"role": h["role"], "content": h["content"]} for h in history
         ]
+
+        # OpenAI-compatible backends use a plain completion (no tool loop yet).
+        if getattr(cloud, "provider", "anthropic") == "openai":
+            try:
+                text = await cloud.complete(system, messages)
+                return (text or "…").strip(), "cloud"
+            except Exception as exc:
+                return f"(cloud error: {exc})", "cloud"
 
         # Tools = built-ins + anything contributed by plug-in modules. Self-
         # improvement is only offered when the human master switch is on.

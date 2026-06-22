@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CompanionAI · Settings</title>
+<meta name="theme-color" content="#04060d" />
+<style>
+  :root { --accent:#5fd0ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; background:#04060d; color:#cfe6ff;
+    font:15px/1.6 ui-monospace,"SF Mono",Menlo,monospace; display:flex;
+    justify-content:center; }
+  .wrap { width:min(560px,94vw); padding:28px 6px 60px; }
+  h1 { font-size:18px; letter-spacing:3px; color:#fff; margin:0 0 4px; }
+  .sub { opacity:.55; font-size:12px; letter-spacing:2px; margin-bottom:24px; }
+  label { display:block; margin:16px 0 6px; font-size:12px; letter-spacing:1px; opacity:.8; }
+  input, select { width:100%; padding:12px 14px; border-radius:10px;
+    border:1px solid #5fd0ff44; background:#0a1322; color:#eaf6ff; font:inherit; }
+  input:focus, select:focus { outline:none; border-color:var(--accent); }
+  .hint { font-size:11px; opacity:.5; margin-top:4px; }
+  .row { display:flex; gap:10px; align-items:center; margin-top:26px; }
+  button { padding:13px 22px; border:0; border-radius:10px; cursor:pointer;
+    background:var(--accent); color:#04060d; font:inherit; font-weight:600; letter-spacing:1px; }
+  button:disabled { opacity:.5; }
+  #msg { font-size:13px; }
+  .ok { color:#6bffb0; } .err { color:#ff7b9c; }
+  a { color:#5fd0ff99; font-size:12px; text-decoration:none; }
+  .openai-only { display:none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>CLOUD BRAIN</h1>
+  <div class="sub">CHOOSE THE LLM FOR HEAVY LIFTING</div>
+
+  <label>Provider</label>
+  <select id="provider">
+    <option value="anthropic">Anthropic (Claude) — full tool use</option>
+    <option value="openai">OpenAI-compatible (OpenAI · OpenRouter · Groq · local …)</option>
+  </select>
+
+  <div class="openai-only">
+    <label>Base URL</label>
+    <input id="base_url" placeholder="https://api.openai.com/v1" />
+    <div class="hint">e.g. https://openrouter.ai/api/v1 · https://api.groq.com/openai/v1</div>
+  </div>
+
+  <label>Model</label>
+  <input id="model" list="models" placeholder="claude-opus-4-8" />
+  <datalist id="models"></datalist>
+
+  <label>API key <span id="keystate" class="hint"></span></label>
+  <input id="api_key" type="password" placeholder="paste key (leave blank to keep current)" />
+
+  <label class="anthropic-only">Effort</label>
+  <select id="effort" class="anthropic-only">
+    <option>low</option><option>medium</option><option selected>high</option><option>max</option>
+  </select>
+
+  <div class="row">
+    <button id="save">Save</button>
+    <span id="msg"></span>
+  </div>
+  <div class="row"><a href="/">‹ back to the Archive</a></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const token = new URLSearchParams(location.search).get('token') || localStorage.companionToken || '';
+if (token) localStorage.companionToken = token;
+const headers = (extra = {}) => token ? { ...extra, Authorization: 'Bearer ' + token } : extra;
+
+const PRESETS = {
+  anthropic: ['claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
+  openai: ['gpt-4o-mini', 'gpt-4o', 'meta-llama/llama-3.1-8b-instruct', 'llama-3.1-70b-versatile'],
+};
+
+function syncProvider() {
+  const p = $('provider').value;
+  document.querySelectorAll('.openai-only').forEach(e => e.style.display = p === 'openai' ? 'block' : 'none');
+  document.querySelectorAll('.anthropic-only').forEach(e => e.style.display = p === 'anthropic' ? 'block' : 'none');
+  $('models').innerHTML = (PRESETS[p] || []).map(m => `<option value="${m}">`).join('');
+}
+$('provider').addEventListener('change', syncProvider);
+
+async function load() {
+  try {
+    const r = await fetch('/settings/cloud', { headers: headers() });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const c = await r.json();
+    $('provider').value = c.provider || 'anthropic';
+    $('model').value = c.model || '';
+    $('base_url').value = c.base_url || '';
+    $('effort').value = c.effort || 'high';
+    $('keystate').textContent = c.has_key ? '· a key is set' : '· no key yet';
+    syncProvider();
+  } catch (e) { $('msg').className = 'err'; $('msg').textContent = 'Load failed: ' + e.message; }
+}
+
+$('save').addEventListener('click', async () => {
+  $('save').disabled = true; $('msg').textContent = 'saving…'; $('msg').className = '';
+  const body = {
+    provider: $('provider').value,
+    model: $('model').value.trim(),
+    base_url: $('base_url').value.trim(),
+    effort: $('effort').value,
+  };
+  if ($('api_key').value.trim()) body.api_key = $('api_key').value.trim();
+  try {
+    const r = await fetch('/settings/cloud', {
+      method: 'PUT', headers: headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const c = await r.json();
+    $('msg').className = 'ok';
+    $('msg').textContent = c.has_key ? `saved · ${c.provider} · ${c.model}` : 'saved (no key set — cloud disabled)';
+    $('api_key').value = '';
+    $('keystate').textContent = c.has_key ? '· a key is set' : '· no key yet';
+  } catch (e) { $('msg').className = 'err'; $('msg').textContent = 'Save failed: ' + e.message; }
+  finally { $('save').disabled = false; }
+});
+
+load();
+</script>
+</body>
+</html>
